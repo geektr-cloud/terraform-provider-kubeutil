@@ -1,0 +1,73 @@
+---
+page_title: "kubeutil_tunnel Ephemeral Resource - {{.ProviderName}}"
+subcategory: ""
+description: |-
+  Opens a process-scoped Kubernetes port-forward tunnel without persisting its endpoint.
+---
+
+# kubeutil_tunnel (Ephemeral Resource)
+
+Opens a Kubernetes port-forward tunnel to an abstract target port and returns a
+loopback endpoint that is not persisted in plan or state. This is the recommended
+surface: the ephemeral lifecycle matches a tunnel that only exists while the
+provider process runs.
+
+~> An ephemeral value cannot be used in an ordinary resource argument, and a
+root-module output cannot consume it even with `ephemeral = true`. Legal
+consumers include provisioner and provider configuration blocks, write-only
+arguments where the CLI supports them, and other ephemeral resources.
+
+## Example Usage
+
+```hcl
+ephemeral "kubeutil_tunnel" "api" {
+  target    = "service/api"
+  port      = "http"
+  namespace = "app"
+
+  healthcheck {
+    type = "telnet"
+  }
+}
+
+resource "terraform_data" "api_smoke_test" {
+  provisioner "local-exec" {
+    environment = {
+      KUBEUTIL_ENDPOINT = ephemeral.kubeutil_tunnel.api.hostport
+    }
+    command = "curl -fsS \"http://$KUBEUTIL_ENDPOINT/\" > /dev/null"
+  }
+}
+```
+
+Outputs:
+
+- `host`: always `127.0.0.1`
+- `local_port`: the OS-assigned port
+- `hostport`: `127.0.0.1:<local_port>`
+- `namespace`: the effective namespace
+
+The endpoint stays valid for as long as the provider process keeps the tunnel. It
+does not survive the command, and it is never restored from state.
+
+`Close` releases this instance's reference to the shared tunnel. Other ephemeral
+instances with the same identity keep it alive until they close too. The last
+release stops the keeper and closes the listener.
+
+If the forwarding stream fails, the tunnel reconnects with backoff from `1s` to
+`30s` and re-resolves the target, which may move it to a different pod. The local
+port stays the same, but the listener is down while reconnecting and existing
+connections are cut.
+
+`healthcheck { type = "telnet" }` is a negative rejection check only, bounded by
+the remaining `timeout`. A successful local handshake does not prove the remote
+port is open or the application is healthy. `type` must be set whenever the block
+is present, even though framework schema rendering marks the nested attribute
+optional.
+
+## RBAC
+
+Requires `get` on the target, `get`/`list`/`watch` on pods for selector targets,
+and `create` on `pods/portforward`.
+
+{{ .SchemaMarkdown | trimspace }}

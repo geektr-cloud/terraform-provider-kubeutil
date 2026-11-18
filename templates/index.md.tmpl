@@ -1,0 +1,74 @@
+---
+page_title: "{{.ProviderShortName}} Provider"
+subcategory: ""
+description: |-
+  The kubeutil provider opens process-scoped Kubernetes port-forward tunnels on loopback.
+---
+
+# kubeutil Provider
+
+The kubeutil provider opens process-scoped Kubernetes port-forward tunnels and
+returns a `127.0.0.1` endpoint that Terraform or OpenTofu can consume during the
+current command. It manages no Kubernetes objects: it reads target metadata,
+lists pods for selector targets, and forwards a port to a `Running` pod.
+
+-> The provider requires Terraform 1.10 or later, or OpenTofu 1.12 or later,
+because it defines an ephemeral resource.
+
+!> A tunnel is valid only for the command and provider process that opened it.
+Prefer `ephemeral.kubeutil_tunnel`. `data.kubeutil_tunnel` persists an endpoint
+that is dead in any later command, and applying a saved plan in a new process
+cannot revive it.
+
+## Example Usage
+
+```hcl
+terraform {
+  required_providers {
+    kubeutil = {
+      source = "geektr-cloud/kubeutil"
+    }
+  }
+}
+
+provider "kubeutil" {
+  config_path       = "~/.kube/config"
+  config_context    = "staging"
+  default_namespace = "app"
+}
+
+ephemeral "kubeutil_tunnel" "api" {
+  target = "service/api"
+  port   = "http"
+}
+
+# A provisioner is a legal consumer of an ephemeral value. Root-module outputs
+# are not, even with ephemeral = true.
+resource "terraform_data" "api_smoke_test" {
+  provisioner "local-exec" {
+    environment = {
+      KUBEUTIL_ENDPOINT = ephemeral.kubeutil_tunnel.api.hostport
+    }
+    command = "curl -fsS \"http://$KUBEUTIL_ENDPOINT/\" > /dev/null"
+  }
+}
+```
+
+## Authentication
+
+Configuration mirrors the Kubernetes provider and is merged in memory through
+client-go. Explicit attributes win over `KUBE_*` environment variables, which win
+over kubeconfig files, which win over in-cluster service account credentials. No
+temporary kubeconfig is written.
+
+Notable environment variables: `KUBE_HOST`, `KUBE_USER` (not `KUBE_USERNAME`),
+`KUBE_PASSWORD`, `KUBE_TOKEN`, `KUBE_CONFIG_PATH`, `KUBE_CONFIG_PATHS`,
+`KUBE_CTX`, `KUBE_CTX_AUTH_INFO`, `KUBE_CTX_CLUSTER`, `KUBE_PROXY_URL`, and
+`KUBE_NAMESPACE` for `default_namespace`.
+
+`password`, `token`, `client_key`, and `exec.env` are Sensitive, which redacts
+CLI output only. It is not encryption. When an `exec` block is present,
+`api_version` and `command` must be set, even though framework schema rendering
+marks those nested attributes optional.
+
+{{ .SchemaMarkdown }}

@@ -1,0 +1,76 @@
+---
+page_title: "kubeutil_tunnel Data Source - {{.ProviderName}}"
+subcategory: ""
+description: |-
+  Opens a process-scoped Kubernetes port-forward tunnel and persists its loopback endpoint.
+---
+
+# kubeutil_tunnel (Data Source)
+
+Opens a Kubernetes port-forward tunnel to an abstract target port and returns a
+loopback endpoint. A tunnel is identified by effective namespace, canonical
+target, and normalized requested port; the resolved pod is not exposed.
+
+!> **The endpoint is process-scoped.** It is valid only for the command and
+provider process that read this data source. Reading it during plan performs real
+API calls and opens a listener. Every read may return a different `local_port`,
+so it can appear as a plan diff. A saved plan applied in another process, or any
+later command, sees a closed port. State does not keep a tunnel alive.
+
+~> Prefer `ephemeral.kubeutil_tunnel` when the consumer can accept an ephemeral
+value, such as a provisioner.
+This data source exists for consumers that cannot.
+
+## Example Usage
+
+```hcl
+data "kubeutil_tunnel" "postgres" {
+  target    = "service/postgres"
+  port      = "postgres" # or 5432, or ":5432"
+  namespace = "app"
+
+  timeout = "60s"
+
+  healthcheck {
+    type = "telnet"
+  }
+}
+
+output "postgres_hostport_during_this_run" {
+  value = data.kubeutil_tunnel.postgres.hostport
+}
+```
+
+Outputs:
+
+- `host`: always `127.0.0.1`
+- `local_port`: the OS-assigned port
+- `hostport`: `127.0.0.1:<local_port>`
+- `namespace`: the effective namespace
+- `id`: `<namespace>/<canonical-target>/<normalized-port>`
+
+The local port is always allocated by the OS. A non-empty local component such as
+`8888:5432` is rejected. Selector targets resolve to a `Running` pod. Services
+translate the requested Service port through the Service's `targetPort`; other
+targets resolve container ports directly.
+
+Tunnels with the same identity share one listener per provider instance, so
+identical data sources see the same `local_port`. Data-source references are held
+until the provider process exits.
+
+If the forwarding stream fails, the tunnel reconnects with backoff from `1s` to
+`30s` and re-resolves the target, which may move the tunnel to a different pod.
+The local port stays the same, but the listener is down while reconnecting and
+existing connections are cut.
+
+`healthcheck { type = "telnet" }` is a negative rejection check only: a
+successful local handshake does not prove the remote application is healthy.
+`type` must be set whenever the block is present, even though framework schema
+rendering marks the nested attribute optional.
+
+## RBAC
+
+Requires `get` on the target, `get`/`list`/`watch` on pods for selector targets,
+and `create` on `pods/portforward`.
+
+{{ .SchemaMarkdown | trimspace }}
