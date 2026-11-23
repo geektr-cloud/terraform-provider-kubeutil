@@ -79,7 +79,7 @@ jobs:
       - name: acceptance tests
         env:
           TF_ACC: "1"
-          TF_ACC_TERRAFORM_PATH: ${{ matrix.cli }}
+          TF_ACC_TERRAFORM_PATH: ${{ matrix.cli == 'opentofu' && 'tofu' || 'terraform' }}
         # Hermetic tests stub the Kubernetes API. Kind tests are excluded; they
         # need a real cluster and run in the acceptance-kind job.
         run: go test ./internal/provider -run TestAcc -skip TestAccKind -v -count=1
@@ -169,7 +169,7 @@ jobs:
       - name: acceptance tests against kind
         env:
           TF_ACC: "1"
-          TF_ACC_TERRAFORM_PATH: ${{ matrix.cli }}
+          TF_ACC_TERRAFORM_PATH: ${{ matrix.cli == 'opentofu' && 'tofu' || 'terraform' }}
           KUBEUTIL_KIND: "1"
           KUBECONFIG: ${{ github.workspace }}/kind.kubeconfig
         run: go test ./internal/provider -run TestAccKind -v -count=1
