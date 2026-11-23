@@ -72,7 +72,7 @@ jobs:
           terraform_wrapper: false
       - name: set up OpenTofu
         if: matrix.cli == 'opentofu'
-        uses: opentofu/setup-opentofu@v1
+        uses: opentofu/setup-opentofu@v2
         with:
           tofu_version: "${{ matrix.version }}"
           tofu_wrapper: false
@@ -111,7 +111,7 @@ jobs:
           terraform_wrapper: false
       - name: set up OpenTofu
         if: matrix.cli == 'opentofu'
-        uses: opentofu/setup-opentofu@v1
+        uses: opentofu/setup-opentofu@v2
         with:
           tofu_version: "${{ matrix.version }}"
           tofu_wrapper: false
